@@ -21,12 +21,13 @@ app.use(express.static(path.join(__dirname, 'dist')));
 app.post('/api/ai', async (req, res) => {
     const { contents, systemInstruction, tools, responseSchema, responseMimeType } = req.body;
 
-    if (!process.env.API_KEY) {
+    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
         return res.status(500).json({ error: "Server Configuration Error: API_KEY is missing." });
     }
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey });
         
         // প্রডাকশন কোয়ালিটির জন্য gemini-3-pro-preview ব্যবহার করা হচ্ছে
         const response = await ai.models.generateContent({

@@ -1,6 +1,5 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, Trash2, AlertCircle, RefreshCcw, ShieldCheck, Globe, Info } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, Trash2, AlertCircle, RefreshCcw, ShieldCheck, Globe, ZapOff } from 'lucide-react';
 import { db } from '../db';
 
 const SYSTEM_INSTRUCTION = `
@@ -10,7 +9,6 @@ const SYSTEM_INSTRUCTION = `
 ২. ভাষা: সর্বদা বাংলা ব্যবহার করবেন।
 ৩. টোন: বিনয়ী ও সম্মানজনক।
 ৪. ডেভেলপার: Sovrab Roy।
-৫. গুগল সার্চ ব্যবহার করে সাম্প্রতিক তথ্য দিন এবং তথ্যের সূত্র (Source Links) উল্লেখ করুন।
 `;
 
 interface Message {
@@ -18,6 +16,7 @@ interface Message {
   text: string;
   isError?: boolean;
   sources?: any[];
+  mode?: 'live_search' | 'offline_knowledge';
 }
 
 const AIChat: React.FC = () => {
@@ -61,19 +60,16 @@ const AIChat: React.FC = () => {
         tools: [{ googleSearch: {} }]
       });
       
-      const responseText = data.text;
-      const sources = data.groundingMetadata?.groundingChunks || [];
-
       setMessages(prev => [...prev, { 
         role: 'model', 
-        text: responseText,
-        sources: sources
+        text: data.text,
+        sources: data.groundingMetadata?.groundingChunks || [],
+        mode: data.mode
       }]);
     } catch (error: any) {
-      console.error("Chat AI Error:", error);
       setMessages(prev => [...prev, { 
         role: 'model', 
-        text: `দুঃখিত, তথ্যটি সংগ্রহ করতে সমস্যা হচ্ছে। এরর: ${error.message}`, 
+        text: `${error.message}`, 
         isError: true 
       }]);
     } finally {
@@ -93,12 +89,12 @@ const AIChat: React.FC = () => {
             <div className="flex items-center gap-1.5 mt-1">
               <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter bg-emerald-100 text-emerald-600">
                 <ShieldCheck className="w-2.5 h-2.5" />
-                Live AI Engine
+                System Active
               </div>
             </div>
           </div>
         </div>
-        <button onClick={() => setMessages([{ role: 'model', text: 'স্বাগতম! আমি রাজবাড়ী জেলা তথ্য সহায়িকা। আপনাকে কিভাবে সাহায্য করতে পারি?' }])} className="p-3 text-slate-400 hover:text-rose-500 rounded-xl">
+        <button onClick={() => setMessages([{ role: 'model', text: 'স্বাগতম! আমি রাজবাড়ী সম্পর্কে আপনাকে কি তথ্য দিয়ে সাহায্য করতে পারি?' }])} className="p-3 text-slate-400 hover:text-rose-500 rounded-xl">
           <Trash2 className="w-5 h-5" />
         </button>
       </div>
@@ -121,6 +117,12 @@ const AIChat: React.FC = () => {
                   {msg.isError && <AlertCircle className="w-4 h-4 mb-2 inline-block mr-1" />}
                   {msg.text}
                   
+                  {msg.mode === 'offline_knowledge' && (
+                    <div className="mt-3 flex items-center gap-2 text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-xl border border-amber-100 dark:border-amber-900/30">
+                      <ZapOff className="w-3.5 h-3.5" /> সার্চ লিমিট শেষ, এআই নলেজ ব্যবহৃত হচ্ছে।
+                    </div>
+                  )}
+
                   {msg.sources && msg.sources.length > 0 && (
                     <div className="mt-4 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
                       <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Verified Sources:</p>
@@ -143,7 +145,7 @@ const AIChat: React.FC = () => {
                   )}
                 </div>
                 {msg.isError && (
-                  <button onClick={() => handleSend([...messages].reverse().find(m => m.role === 'user')?.text)} className="flex items-center gap-2 text-[10px] font-black text-indigo-600 self-start px-4 py-2 bg-white rounded-full border border-slate-100 shadow-sm">
+                  <button onClick={() => handleSend([...messages].reverse().find(m => m.role === 'user')?.text)} className="flex items-center gap-2 text-[10px] font-black text-indigo-600 self-start px-4 py-2 bg-white dark:bg-slate-900 rounded-full border border-slate-100 dark:border-slate-800 shadow-sm">
                     <RefreshCcw className="w-3 h-3" /> পুনরায় চেষ্টা
                   </button>
                 )}

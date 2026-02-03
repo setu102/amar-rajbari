@@ -6,58 +6,75 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // এপিআই কী ট্রিম করা হচ্ছে যাতে কোনো স্পেস না থাকে
-  const apiKey = (process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim();
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
     return res.status(500).json({ 
-      error: 'API_KEY configuration missing on server.',
-      details: 'Vercel Settings-এ GEMINI_API_KEY চেক করুন এবং Redeploy দিন।' 
+      error: 'API_KEY missing',
+      details: 'Vercel Settings-এ API_KEY সেট করুন।' 
     });
   }
 
-  const { contents, systemInstruction, tools, model } = req.body;
+  const { contents, systemInstruction, tools, model, responseMimeType, responseSchema } = req.body;
+  const ai = new GoogleGenAI({ apiKey });
+  const targetModel = model || 'gemini-3-flash-preview';
 
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // gemini-3-flash-preview সাধারণত সব রিজিয়নে দ্রুত কাজ করে
-    const targetModel = model || 'gemini-3-flash-preview';
+  // AI কল করার ফাংশন
+  const generateAIContent = async (useSearch) => {
+    const config = {
+      systemInstruction: systemInstruction || "আপনি রাজবাড়ী জেলার একজন স্মার্ট তথ্য সহায়িকা।",
+      temperature: 0.7,
+      responseMimeType: responseMimeType,
+      responseSchema: responseSchema
+    };
 
-    const response = await ai.models.generateContent({
+    // যদি সার্চ অন থাকে তবেই টুলস অ্যাড হবে
+    if (useSearch) {
+      config.tools = [{ googleSearch: {} }];
+    }
+
+    return await ai.models.generateContent({
       model: targetModel,
       contents: contents,
-      config: {
-        systemInstruction: systemInstruction || "আপনি রাজবাড়ী জেলার একজন স্মার্ট তথ্য সহায়িকা।",
-        tools: tools || [{ googleSearch: {} }],
-        temperature: 0.7,
-      },
+      config: config,
     });
+  };
 
-    if (!response || !response.text) {
-      throw new Error("এআই থেকে কোনো উত্তর পাওয়া যায়নি। সম্ভবত সেফটি ফিল্টারে ব্লক হয়েছে।");
-    }
+  try {
+    // ১. প্রথমে সার্চসহ চেষ্টা করা হবে
+    let response = await generateAIContent(true);
 
     return res.status(200).json({
       text: response.text,
       groundingMetadata: response.candidates?.[0]?.groundingMetadata || null,
+      mode: 'live_search'
     });
+
   } catch (error) {
-    console.error('Gemini Backend Error:', error);
-    
-    // জেমিনি থেকে আসা আসল এরর মেসেজটি পাঠানো হচ্ছে
-    let errorMessage = error.message || "Unknown AI error";
-    if (errorMessage.includes("403") || errorMessage.includes("permission")) {
-      errorMessage = "এপিআই কী-এর অনুমতি নেই অথবা রিজিয়ন সাপোর্ট করছে না।";
-    } else if (errorMessage.includes("404")) {
-      errorMessage = "মডেলটি খুঁজে পাওয়া যায়নি। মডেল নাম চেক করুন।";
-    } else if (errorMessage.includes("API key not valid")) {
-      errorMessage = "আপনার এপিআই কী-টি সঠিক নয়। নতুন একটি কী ট্রাই করুন।";
+    console.error('AI Error:', error.message);
+
+    // ২. যদি কোটা (429) বা রিসোর্স এরর হয়, তবে সার্চ ছাড়াই আবার চেষ্টা করবে
+    if (error.message.includes("429") || error.message.includes("quota") || error.message.includes("RESOURCE_EXHAUSTED")) {
+      try {
+        console.log("Quota exceeded, retrying without Google Search...");
+        let fallbackResponse = await generateAIContent(false);
+        
+        return res.status(200).json({
+          text: fallbackResponse.text,
+          groundingMetadata: null,
+          mode: 'offline_knowledge' // এই মোডটি ফ্রন্টএন্ডে মেসেজ দেখাবে
+        });
+      } catch (fallbackError) {
+        return res.status(500).json({ 
+          error: "সব প্রচেষ্টাই ব্যর্থ হয়েছে।",
+          details: "আপনার এপিআই কী-র একদম বেসিক লিমিটও শেষ হয়ে গেছে। দয়া করে ১০-১৫ মিনিট অপেক্ষা করুন।" 
+        });
+      }
     }
 
     return res.status(500).json({ 
       error: 'AI Request Failed',
-      details: errorMessage 
+      details: error.message 
     });
   }
 }

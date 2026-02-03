@@ -1,29 +1,28 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 export default async function handler(req, res) {
-  // শুধুমাত্র POST রিকোয়েস্ট গ্রহণ করবে
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  /**
-   * ইউজার স্ক্রিনশট অনুযায়ী GEMINI_API_KEY ভেরিয়েবলটি চেক করা হচ্ছে।
-   * সাধারণত Vercel-এ API_KEY বা GEMINI_API_KEY নামে সেভ করা হয়।
-   */
-  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  // এপিআই কী ট্রিম করা হচ্ছে যাতে কোনো স্পেস না থাকে
+  const apiKey = (process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim();
   
   if (!apiKey) {
     return res.status(500).json({ 
       error: 'API_KEY configuration missing on server.',
-      details: 'আপনার Vercel Settings-এ ভেরিয়েবলটির নাম GEMINI_API_KEY অথবা API_KEY আছে কিনা চেক করুন এবং Redeploy দিন।' 
+      details: 'Vercel Settings-এ GEMINI_API_KEY চেক করুন এবং Redeploy দিন।' 
     });
   }
 
-  const { contents, systemInstruction, tools, model, responseSchema, responseMimeType } = req.body;
+  const { contents, systemInstruction, tools, model } = req.body;
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const targetModel = model || 'gemini-3-pro-preview';
+    
+    // gemini-3-flash-preview সাধারণত সব রিজিয়নে দ্রুত কাজ করে
+    const targetModel = model || 'gemini-3-flash-preview';
 
     const response = await ai.models.generateContent({
       model: targetModel,
@@ -31,11 +30,13 @@ export default async function handler(req, res) {
       config: {
         systemInstruction: systemInstruction || "আপনি রাজবাড়ী জেলার একজন স্মার্ট তথ্য সহায়িকা।",
         tools: tools || [{ googleSearch: {} }],
-        temperature: 0.1,
-        responseSchema: responseSchema,
-        responseMimeType: responseMimeType,
+        temperature: 0.7,
       },
     });
+
+    if (!response || !response.text) {
+      throw new Error("এআই থেকে কোনো উত্তর পাওয়া যায়নি। সম্ভবত সেফটি ফিল্টারে ব্লক হয়েছে।");
+    }
 
     return res.status(200).json({
       text: response.text,
@@ -43,9 +44,20 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Gemini Backend Error:', error);
+    
+    // জেমিনি থেকে আসা আসল এরর মেসেজটি পাঠানো হচ্ছে
+    let errorMessage = error.message || "Unknown AI error";
+    if (errorMessage.includes("403") || errorMessage.includes("permission")) {
+      errorMessage = "এপিআই কী-এর অনুমতি নেই অথবা রিজিয়ন সাপোর্ট করছে না।";
+    } else if (errorMessage.includes("404")) {
+      errorMessage = "মডেলটি খুঁজে পাওয়া যায়নি। মডেল নাম চেক করুন।";
+    } else if (errorMessage.includes("API key not valid")) {
+      errorMessage = "আপনার এপিআই কী-টি সঠিক নয়। নতুন একটি কী ট্রাই করুন।";
+    }
+
     return res.status(500).json({ 
       error: 'AI Request Failed',
-      details: error.message 
+      details: errorMessage 
     });
   }
 }

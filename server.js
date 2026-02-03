@@ -1,4 +1,3 @@
-
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -15,34 +14,51 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.post('/api/ai', async (req, res) => {
-    const { contents, systemInstruction, tools, responseSchema, responseMimeType } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    const { contents, systemInstruction, tools, model, responseMimeType, responseSchema } = req.body;
+    const apiKey = process.env.API_KEY;
 
     if (!apiKey) {
         return res.status(500).json({ error: "Server Configuration Error: API_KEY is missing." });
     }
 
-    try {
-        const ai = new GoogleGenAI({ apiKey: apiKey });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+    const ai = new GoogleGenAI({ apiKey: apiKey });
+
+    const callGemini = async (useTools) => {
+        return await ai.models.generateContent({
+            model: model || 'gemini-3-flash-preview',
             contents: contents,
             config: {
                 systemInstruction: systemInstruction || `আপনি রাজবাড়ী জেলার একজন ভার্চুয়াল অ্যাসিস্ট্যান্ট।`,
-                tools: tools || [{ googleSearch: {} }],
-                responseSchema: responseSchema,
+                tools: useTools ? [{ googleSearch: {} }] : [],
+                temperature: 0.7,
                 responseMimeType: responseMimeType,
-                temperature: 0.1,
+                responseSchema: responseSchema
             }
         });
+    };
 
+    try {
+        const response = await callGemini(true);
         res.json({
             text: response.text || "",
-            groundingMetadata: response.candidates?.[0]?.groundingMetadata || null
+            groundingMetadata: response.candidates?.[0]?.groundingMetadata || null,
+            mode: 'live_search'
         });
     } catch (error) {
-        console.error("Gemini API Error:", error.message);
-        res.status(500).json({ error: error.message || "Gemini API call failed." });
+        console.error("Gemini Primary Error:", error.message);
+        if (error.message.includes("429") || error.message.includes("quota")) {
+            try {
+                const fallback = await callGemini(false);
+                return res.json({
+                    text: fallback.text || "",
+                    groundingMetadata: null,
+                    mode: 'offline_knowledge'
+                });
+            } catch (e) {
+                return res.status(500).json({ error: "API Limit Reached. Try again later." });
+            }
+        }
+        res.status(500).json({ error: error.message });
     }
 });
 

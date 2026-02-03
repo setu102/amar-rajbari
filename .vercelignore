@@ -1,0 +1,2 @@
+# Avoid route conflicts between serverless functions and PHP endpoints.
+api/*.php

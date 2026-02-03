@@ -1,10 +1,6 @@
-
 import { RAJBARI_DATA } from './constants.tsx';
 
 export const db = {
-  /**
-   * টেক্সট থেকে JSON ডাটা খুঁজে বের করে।
-   */
   extractJSON: (text: string) => {
     if (!text) return null;
     try {
@@ -19,10 +15,6 @@ export const db = {
     }
   },
 
-  /**
-   * এআই কল করার মূল ফাংশন।
-   * ফ্রন্টএন্ড থেকে নিরাপদ সার্ভারলেস API রুটে রিকোয়েস্ট পাঠায়।
-   */
   callAI: async (params: { 
     contents: any; 
     systemInstruction?: string; 
@@ -35,7 +27,7 @@ export const db = {
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           contents: params.contents,
@@ -44,28 +36,24 @@ export const db = {
           model: params.model,
           responseMimeType: params.responseMimeType,
           responseSchema: params.responseSchema
-        })
+        }),
       });
 
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => null);
-        const serverMessage = errorPayload?.error || errorPayload?.details;
-        throw new Error(serverMessage || "AI Request Failed.");
-      }
-
       const data = await response.json();
-      if (!data?.text) {
-        throw new Error("AI returned an empty or invalid response.");
+
+      if (!response.ok) {
+        // যদি details থাকে তবে সেটিই দেখানো হবে
+        const errorMsg = data.details || data.error || "AI রিকোয়েস্ট ব্যর্থ হয়েছে।";
+        throw new Error(errorMsg);
       }
 
       return {
-        text: data.text,
+        text: data.text || "",
         groundingMetadata: data.groundingMetadata || null
       };
     } catch (error: any) {
-      console.error("Gemini AI Engine Error:", error);
-      // ইউজার যাতে এরর বুঝতে পারে তাই বিস্তারিত থ্রো করা হচ্ছে
-      throw new Error(error.message || "Something went wrong with AI.");
+      console.error("AI Bridge Error:", error);
+      throw new Error(error.message || "এআই সার্ভারের সাথে যোগাযোগ করা সম্ভব হচ্ছে না।");
     }
   },
 

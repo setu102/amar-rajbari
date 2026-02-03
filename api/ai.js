@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 export default async function handler(req, res) {
@@ -7,14 +6,16 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Vercel Environment Variable থেকে API_KEY নেওয়া
-  const apiKey = process.env.API_KEY;
+  /**
+   * ইউজার স্ক্রিনশট অনুযায়ী GEMINI_API_KEY ভেরিয়েবলটি চেক করা হচ্ছে।
+   * সাধারণত Vercel-এ API_KEY বা GEMINI_API_KEY নামে সেভ করা হয়।
+   */
+  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   
   if (!apiKey) {
-    // এই এররটি আসলে বুঝবেন Vercel-এ Environment Variable সেট করার পর Redeploy করা হয়নি
     return res.status(500).json({ 
       error: 'API_KEY configuration missing on server.',
-      details: 'Please set API_KEY in Vercel settings and REDEPLOY your project.' 
+      details: 'আপনার Vercel Settings-এ ভেরিয়েবলটির নাম GEMINI_API_KEY অথবা API_KEY আছে কিনা চেক করুন এবং Redeploy দিন।' 
     });
   }
 
@@ -22,9 +23,6 @@ export default async function handler(req, res) {
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    
-    // টাস্ক অনুযায়ী মডেল নির্বাচন
-    // চ্যাট বা জটিল টেক্সট টাস্কের জন্য gemini-3-pro-preview সেরা
     const targetModel = model || 'gemini-3-pro-preview';
 
     const response = await ai.models.generateContent({
@@ -39,23 +37,15 @@ export default async function handler(req, res) {
       },
     });
 
-    // সঠিক ডাটা রিটার্ন করা
     return res.status(200).json({
       text: response.text,
       groundingMetadata: response.candidates?.[0]?.groundingMetadata || null,
     });
   } catch (error) {
     console.error('Gemini Backend Error:', error);
-    
-    // নির্দিষ্ট এপিআই এরর হ্যান্ডলিং
-    if (error.message && error.message.includes("API key not valid")) {
-      return res.status(401).json({ error: 'Invalid API Key', details: 'আপনার দেওয়া এপিআই কী-টি সঠিক নয়।' });
-    }
-
     return res.status(500).json({ 
       error: 'AI Request Failed',
       details: error.message 
     });
   }
 }
-
